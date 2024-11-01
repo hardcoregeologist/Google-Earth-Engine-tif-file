@@ -1,0 +1,48 @@
+var aoi = null;
+
+function onDraw(geometry) {
+  aoi = geometry;
+
+  // Filter the Sentinel-2 image collection based on the area of interest and date range
+  var image = ee.ImageCollection("COPERNICUS/S2")
+                 .filterBounds(aoi)
+                 .filterDate('2023-01-01', '2023-12-31')
+                 .filterMetadata('CLOUDY_PIXEL_PERCENTAGE', 'less_than', 10) // Set max cloud cover
+                 .sort('CLOUDY_PIXEL_PERCENTAGE')
+                 .first();  
+
+  // Check if the image is null
+  if (!image) {
+    print('No images found for the specified area and date range.');
+    return;
+  }
+
+  // Prepare the RGB image (using Sentinel-2 bands)
+  var rgbImage = image.select(['B4', 'B3', 'B2']).toFloat();
+
+  // Center the map on the area of interest
+  Map.centerObject(aoi, 10);
+  Map.addLayer(rgbImage, {min: 0, max: 3000}, 'RGB Image'); // Adjust max based on Sentinel-2 reflectance
+
+  // Export the image with a reduced scale for higher resolution
+  Export.image.toDrive({
+    image: rgbImage.clip(aoi),
+    description: 'GeoTIFF_Image',
+    scale: 10,  // 10 meters for Sentinel-2
+    region: aoi,
+    fileFormat: 'GeoTIFF',
+    maxPixels: 1e13,
+    crs: 'EPSG:4326',
+    formatOptions: {
+      cloudOptimized: true
+    }
+  });
+
+  // Print the coordinates of the drawn polygon
+  print('Coordinates of the drawn polygon:', aoi.coordinates());
+}
+
+// Set up drawing tools
+var drawingTools = Map.drawingTools();
+drawingTools.setShape('polygon');
+drawingTools.onDraw(onDraw); 
